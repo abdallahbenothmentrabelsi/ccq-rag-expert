@@ -28,6 +28,8 @@ services:
       - .env
     environment:
       - API_URL=http://rag-app:8000
+      - INNGEST_API_BASE=http://inngest-dev:8288/v1
+      - INNGEST_EVENT_KEY=local_dev_key
     networks:
       - rag-network
 
