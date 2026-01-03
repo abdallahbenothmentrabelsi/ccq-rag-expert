@@ -10,3 +10,12 @@ wheels/
 .venv
 /uploads
 .env
+# PyCharm (les fichiers de config de ton éditeur)
+.idea/
+
+# Qdrant (Les données de ta base de données locale)
+qdrant_storage/
+qdrant_data/
+
+# Inngest (fichiers temporaires)
+.inngest/
