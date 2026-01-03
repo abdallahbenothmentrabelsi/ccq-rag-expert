@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # Ton Application RAG (Nouveau !)
   rag-app:
     build: .
     ports:
@@ -16,7 +15,6 @@ services:
     networks:
       - rag-network
 
-  # ... (Garde tes services Qdrant et Inngest existants ici) ...
   qdrant:
     image: qdrant/qdrant
     ports:
@@ -25,7 +23,8 @@ services:
       - rag-network
 
   inngest-dev:
-    image: inngest/inngest
+    image: inngest/inngest:latest
+    command: inngest dev -u http://rag-app:8000/api/inngest
     ports:
       - "8288:8288"
     networks:
