@@ -19,9 +19,6 @@ def get_inngest_client() -> inngest.Inngest:
     Configure le client Inngest pour qu'il fonctionne dans Docker
     en pointant vers le conteneur inngest-dev.
     """
-    # URL par défaut pour Docker : http://inngest-dev:8288
-    # On retire le /v1 ici car le client Python le gère souvent tout seul
-    base_url = os.getenv("INNGEST_API_BASE", "http://127.0.0.1:8288").rstrip("/")
     event_key = os.getenv("INNGEST_EVENT_KEY", "local_dev_key")
 
     return inngest.Inngest(
@@ -32,8 +29,22 @@ def get_inngest_client() -> inngest.Inngest:
 
 
 def _get_api_root_url() -> str:
-    """Récupère l'URL racine propre (sans slash à la fin)"""
-    return os.getenv("INNGEST_API_BASE", "http://127.0.0.1:8288").rstrip("/")
+    """
+    Récupère l'URL racine pour nos appels manuels (Polling).
+    Doit correspondre à ce que le SDK utilise.
+    """
+    # 1. On priorise la nouvelle variable standard du SDK
+    url = os.getenv("INNGEST_BASE_URL")
+
+    # 2. Si elle n'existe pas, on cherche l'ancienne (compatibilité)
+    if not url:
+        url = os.getenv("INNGEST_API_BASE")
+
+    # 3. Fallback localhost pour tes tests hors Docker
+    if not url:
+        url = "http://127.0.0.1:8288"
+
+    return url.rstrip("/")
 
 def save_uploaded_pdf(file) -> Path:
     uploads_dir = Path("uploads")
