@@ -13,34 +13,42 @@ load_dotenv()
 st.set_page_config(page_title="RAG Ingest PDF", page_icon="📄", layout="centered")
 
 
-@st.cache_resource
-def get_inngest_client() -> inngest.Inngest:
+def run_async(coro):
     """
-    Configure le client Inngest pour qu'il fonctionne dans Docker
-    en pointant vers le conteneur inngest-dev.
+    Exécute une coroutine de manière sûre dans Streamlit.
+    Crée une nouvelle boucle si nécessaire pour éviter les conflits.
     """
-    event_key = os.getenv("INNGEST_EVENT_KEY", "local_dev_key")
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
+
+# --- CONFIGURATION INNGEST ---
+
+# ⚠️ IMPORTANT : Pas de @st.cache_resource ici !
+# Cela évite de garder un client lié à une boucle d'événement fermée.
+def get_inngest_client() -> inngest.Inngest:
     return inngest.Inngest(
         app_id="rag_app",
         is_production=False,
-        event_key=event_key
+        # Le SDK va lire automatiquement INNGEST_BASE_URL dans les variables d'env
+        event_key=os.getenv("INNGEST_EVENT_KEY", "local_dev_key")
     )
 
 
 def _get_api_root_url() -> str:
-    """
-    Récupère l'URL racine pour nos appels manuels (Polling).
-    Doit correspondre à ce que le SDK utilise.
-    """
-    # 1. On priorise la nouvelle variable standard du SDK
+    """Récupère l'URL racine d'Inngest (compatible Docker & Local)"""
+    # 1. Priorité à la variable Docker standard
     url = os.getenv("INNGEST_BASE_URL")
 
-    # 2. Si elle n'existe pas, on cherche l'ancienne (compatibilité)
+    # 2. Compatibilité arrière
     if not url:
         url = os.getenv("INNGEST_API_BASE")
 
-    # 3. Fallback localhost pour tes tests hors Docker
+    # 3. Fallback Local (quand tu testes sur ton PC sans Docker)
     if not url:
         url = "http://127.0.0.1:8288"
 
@@ -84,15 +92,15 @@ async def send_rag_query_event(question: str, top_k: int) -> str:
 
 
 def fetch_runs(event_id: str) -> list[dict]:
-    # Construction manuelle de l'URL pour l'API REST du Dev Server
-    # Ici on doit souvent ajouter /v1 si l'URL de base ne l'a pas
+    # Construction intelligente de l'URL
     base = _get_api_root_url()
 
-    # Si l'URL de base contient déjà /v1, on ne l'ajoute pas
-    if "/v1" in base:
-        url = f"{base}/events/{event_id}/runs"
-    else:
+    # Si l'URL de base ne contient pas /v1, on l'ajoute si nécessaire
+    # (L'API Inngest standard est souvent sur /v1/events/...)
+    if "/v1" not in base:
         url = f"{base}/v1/events/{event_id}/runs"
+    else:
+        url = f"{base}/events/{event_id}/runs"
 
     try:
         resp = requests.get(url, timeout=5)
@@ -100,14 +108,16 @@ def fetch_runs(event_id: str) -> list[dict]:
         data = resp.json()
         return data.get("data", [])
     except Exception as e:
-        st.error(f"Erreur de connexion à Inngest ({url}): {e}")
+        # On affiche l'erreur discrètement dans les logs ou via st.error si critique
+        print(f"Erreur polling Inngest ({url}): {e}")
         return []
 
 
-def wait_for_run_output(event_id: str, timeout_s: float = 300.0, poll_interval_s: float = 1.0) -> dict:
+def wait_for_run_output(event_id: str, timeout_s: float = 120.0, poll_interval_s: float = 1.0) -> dict:
     start = time.time()
     last_status = None
 
+    # Barre de progression pour le feedback utilisateur
     progress_bar = st.progress(0, text="En attente du démarrage...")
 
     while True:
@@ -117,21 +127,22 @@ def wait_for_run_output(event_id: str, timeout_s: float = 300.0, poll_interval_s
             status = run.get("status")
             last_status = status or last_status
 
-            # Mise à jour visuelle
             if status == "Running":
-                progress_bar.progress(50, text="Traitement en cours...")
+                progress_bar.progress(50, text="L'IA réfléchit...")
 
             if status in ("Completed", "Succeeded", "Success", "Finished"):
                 progress_bar.progress(100, text="Terminé !")
+                time.sleep(0.5)  # Petit délai pour voir le 100%
+                progress_bar.empty()
                 return run.get("output") or {}
 
             if status in ("Failed", "Cancelled"):
                 progress_bar.empty()
-                raise RuntimeError(f"Le run a échoué avec le statut : {status}")
+                raise RuntimeError(f"Le traitement a échoué (Statut: {status})")
 
         if time.time() - start > timeout_s:
             progress_bar.empty()
-            raise TimeoutError(f"Délai dépassé (Dernier statut: {last_status})")
+            raise TimeoutError(f"Trop long... (Dernier statut: {last_status})")
 
         time.sleep(poll_interval_s)
 
@@ -139,27 +150,31 @@ st.title("Upload a PDF to Ingest")
 uploaded = st.file_uploader("Choose a PDF", type=["pdf"], accept_multiple_files=False)
 
 if uploaded is not None:
+    # Bouton explicite pour éviter les upload auto intempestifs
     if st.button("Lancer l'ingestion"):
-        with st.spinner("Envoi du fichier et déclenchement..."):
+        with st.spinner("Envoi du fichier..."):
             path = save_uploaded_pdf(uploaded)
-            asyncio.run(send_rag_ingest_event(path))
+            # Utilisation de notre wrapper safe
+            run_async(send_rag_ingest_event(path))
             time.sleep(0.5)
         st.success(f"Ingestion déclenchée pour : {path.name}")
-        st.info("Regarde le Dashboard Inngest pour voir la progression.")
+        st.caption("Regarde le Dashboard Inngest pour voir la progression.")
 
 st.divider()
 st.title("Ask a question about your PDFs")
 
 with st.form("rag_query_form"):
     question = st.text_input("Your question")
-    top_k = st.number_input("How many chunks to retrieve", min_value=1, max_value=20, value=5, step=1)
+    top_k = st.number_input("Chunks to retrieve", min_value=1, max_value=20, value=5)
     submitted = st.form_submit_button("Ask")
 
     if submitted and question.strip():
-        with st.spinner("Envoi de la question..."):
-            event_id = asyncio.run(send_rag_query_event(question.strip(), int(top_k)))
-
         try:
+            with st.spinner("Envoi de la question..."):
+                # 1. Envoi asynchrone sécurisé
+                event_id = run_async(send_rag_query_event(question.strip(), int(top_k)))
+
+            # 2. Attente active (Polling synchrone)
             output = wait_for_run_output(event_id)
             answer = output.get("answer", "")
             sources = output.get("sources", [])
@@ -171,5 +186,6 @@ with st.form("rag_query_form"):
                 with st.expander("Voir les sources"):
                     for s in sources:
                         st.write(f"- {s}")
+
         except Exception as e:
-            st.error(f"Erreur lors de la récupération de la réponse : {e}")
+            st.error(f"Une erreur est survenue : {e}")
