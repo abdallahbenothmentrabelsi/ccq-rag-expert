@@ -27,8 +27,7 @@ def get_inngest_client() -> inngest.Inngest:
     return inngest.Inngest(
         app_id="rag_app",
         is_production=False,
-        base_url=base_url,  # CRUCIAL : Force l'adresse du serveur de dev
-        event_key=event_key  # CRUCIAL : Clé factice pour le dev
+        event_key=event_key
     )
 
 
