@@ -176,16 +176,47 @@ with st.form("rag_query_form"):
 
             # 2. Attente active (Polling synchrone)
             output = wait_for_run_output(event_id)
-            answer = output.get("answer", "")
-            sources = output.get("sources", [])
 
+            # Récupération des données brutes
+            full_answer = output.get("answer", "")
+            raw_sources = output.get("sources", [])
+
+            # --- TRAITEMENT DES SOURCES ---
+            # On sépare le texte de réponse des lignes de citation [Source: ...]
+            clean_answer_lines = []
+            extracted_sources = []
+
+            if full_answer:
+                for line in full_answer.split('\n'):
+                    # Détection des lignes qui ressemblent à des sources
+                    if line.strip().startswith("[Source:") or line.strip().startswith("Source:"):
+                        extracted_sources.append(line.strip())
+                    else:
+                        clean_answer_lines.append(line)
+
+            final_answer = "\n".join(clean_answer_lines).strip()
+
+            # --- AFFICHAGE ---
             st.subheader("Answer")
-            st.write(answer or "(Pas de réponse générée)")
+            st.markdown(final_answer or "(Pas de réponse générée)")
 
-            if sources:
-                with st.expander("Voir les sources"):
-                    for s in sources:
-                        st.write(f"- {s}")
+            # On combine les sources extraites du texte et celles renvoyées par l'API
+            # On utilise un set pour éviter les doublons si nécessaire
+            display_sources = extracted_sources
+
+            # Si aucune source extraite du texte, on affiche les noms de fichiers bruts
+            if not display_sources and raw_sources:
+                display_sources = [f"📄 {s}" for s in raw_sources]
+
+            if display_sources:
+                with st.expander(" Voir les sources et références"):
+                    for src in display_sources:
+                        st.markdown(f"**•** {src}")
+            elif raw_sources:
+                # Fallback si l'extraction a échoué mais qu'il y a des fichiers
+                with st.expander(" Voir les fichiers sources"):
+                    for s in raw_sources:
+                        st.markdown(f"- {s}")
 
         except Exception as e:
             st.error(f"Une erreur est survenue : {e}")
