@@ -10,6 +10,10 @@ services:
     depends_on:
       - qdrant
       - inngest-dev
+    environment:
+      - INNGEST_API_BASE=http://inngest-dev:8288
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
     volumes:
       - ./uploads:/app/uploads # Pour garder les PDF
     networks:
@@ -17,7 +21,7 @@ services:
 
   rag-frontend:
     build: .
-    command: streamlit run src/streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+    command: streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0
     ports:
       - "8501:8501"
     env_file:
