@@ -15,8 +15,26 @@ st.set_page_config(page_title="RAG Ingest PDF", page_icon="📄", layout="center
 
 @st.cache_resource
 def get_inngest_client() -> inngest.Inngest:
-    return inngest.Inngest(app_id="rag_app", is_production=False)
+    """
+    Configure le client Inngest pour qu'il fonctionne dans Docker
+    en pointant vers le conteneur inngest-dev.
+    """
+    # URL par défaut pour Docker : http://inngest-dev:8288
+    # On retire le /v1 ici car le client Python le gère souvent tout seul
+    base_url = os.getenv("INNGEST_API_BASE", "http://127.0.0.1:8288").rstrip("/")
+    event_key = os.getenv("INNGEST_EVENT_KEY", "local_dev_key")
 
+    return inngest.Inngest(
+        app_id="rag_app",
+        is_production=False,
+        base_url=base_url,  # CRUCIAL : Force l'adresse du serveur de dev
+        event_key=event_key  # CRUCIAL : Clé factice pour le dev
+    )
+
+
+def _get_api_root_url() -> str:
+    """Récupère l'URL racine propre (sans slash à la fin)"""
+    return os.getenv("INNGEST_API_BASE", "http://127.0.0.1:8288").rstrip("/")
 
 def save_uploaded_pdf(file) -> Path:
     uploads_dir = Path("uploads")
@@ -40,24 +58,7 @@ async def send_rag_ingest_event(pdf_path: Path) -> None:
     )
 
 
-st.title("Upload a PDF to Ingest")
-uploaded = st.file_uploader("Choose a PDF", type=["pdf"], accept_multiple_files=False)
-
-if uploaded is not None:
-    with st.spinner("Uploading and triggering ingestion..."):
-        path = save_uploaded_pdf(uploaded)
-        # Kick off the event and block until the send completes
-        asyncio.run(send_rag_ingest_event(path))
-        # Small pause for user feedback continuity
-        time.sleep(0.3)
-    st.success(f"Triggered ingestion for: {path.name}")
-    st.caption("You can upload another PDF if you like.")
-
-st.divider()
-st.title("Ask a question about your PDFs")
-
-
-async def send_rag_query_event(question: str, top_k: int) -> None:
+async def send_rag_query_event(question: str, top_k: int) -> str:
     client = get_inngest_client()
     result = await client.send(
         inngest.Event(
@@ -72,36 +73,72 @@ async def send_rag_query_event(question: str, top_k: int) -> None:
     return result[0]
 
 
-def _inngest_api_base() -> str:
-    # Local dev server default; configurable via env
-    return os.getenv("INNGEST_API_BASE", "http://127.0.0.1:8288/v1")
-
-
 def fetch_runs(event_id: str) -> list[dict]:
-    url = f"{_inngest_api_base()}/events/{event_id}/runs"
-    resp = requests.get(url)
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("data", [])
+    # Construction manuelle de l'URL pour l'API REST du Dev Server
+    # Ici on doit souvent ajouter /v1 si l'URL de base ne l'a pas
+    base = _get_api_root_url()
+
+    # Si l'URL de base contient déjà /v1, on ne l'ajoute pas
+    if "/v1" in base:
+        url = f"{base}/events/{event_id}/runs"
+    else:
+        url = f"{base}/v1/events/{event_id}/runs"
+
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", [])
+    except Exception as e:
+        st.error(f"Erreur de connexion à Inngest ({url}): {e}")
+        return []
 
 
-def wait_for_run_output(event_id: str, timeout_s: float = 300.0, poll_interval_s: float = 0.5) -> dict:
+def wait_for_run_output(event_id: str, timeout_s: float = 300.0, poll_interval_s: float = 1.0) -> dict:
     start = time.time()
     last_status = None
+
+    progress_bar = st.progress(0, text="En attente du démarrage...")
+
     while True:
         runs = fetch_runs(event_id)
         if runs:
             run = runs[0]
             status = run.get("status")
             last_status = status or last_status
+
+            # Mise à jour visuelle
+            if status == "Running":
+                progress_bar.progress(50, text="Traitement en cours...")
+
             if status in ("Completed", "Succeeded", "Success", "Finished"):
+                progress_bar.progress(100, text="Terminé !")
                 return run.get("output") or {}
+
             if status in ("Failed", "Cancelled"):
-                raise RuntimeError(f"Function run {status}")
+                progress_bar.empty()
+                raise RuntimeError(f"Le run a échoué avec le statut : {status}")
+
         if time.time() - start > timeout_s:
-            raise TimeoutError(f"Timed out waiting for run output (last status: {last_status})")
+            progress_bar.empty()
+            raise TimeoutError(f"Délai dépassé (Dernier statut: {last_status})")
+
         time.sleep(poll_interval_s)
 
+st.title("Upload a PDF to Ingest")
+uploaded = st.file_uploader("Choose a PDF", type=["pdf"], accept_multiple_files=False)
+
+if uploaded is not None:
+    if st.button("Lancer l'ingestion"):
+        with st.spinner("Envoi du fichier et déclenchement..."):
+            path = save_uploaded_pdf(uploaded)
+            asyncio.run(send_rag_ingest_event(path))
+            time.sleep(0.5)
+        st.success(f"Ingestion déclenchée pour : {path.name}")
+        st.info("Regarde le Dashboard Inngest pour voir la progression.")
+
+st.divider()
+st.title("Ask a question about your PDFs")
 
 with st.form("rag_query_form"):
     question = st.text_input("Your question")
@@ -109,18 +146,20 @@ with st.form("rag_query_form"):
     submitted = st.form_submit_button("Ask")
 
     if submitted and question.strip():
-        with st.spinner("Sending event and generating answer..."):
-            # Fire-and-forget event to Inngest for observability/workflow
+        with st.spinner("Envoi de la question..."):
             event_id = asyncio.run(send_rag_query_event(question.strip(), int(top_k)))
-            # Poll the local Inngest API for the run's output
+
+        try:
             output = wait_for_run_output(event_id)
             answer = output.get("answer", "")
             sources = output.get("sources", [])
 
-        st.subheader("Answer")
-        st.write(answer or "(No answer)")
-        if sources:
-            st.caption("Sources")
-            for s in sources:
-                st.write(f"- {s}")
+            st.subheader("Answer")
+            st.write(answer or "(Pas de réponse générée)")
 
+            if sources:
+                with st.expander("Voir les sources"):
+                    for s in sources:
+                        st.write(f"- {s}")
+        except Exception as e:
+            st.error(f"Erreur lors de la récupération de la réponse : {e}")
