@@ -3,7 +3,7 @@ name: Deploy to VPS
 on:
   push:
     branches:
-      - main  # Vérifie que ta branche principale s'appelle bien 'main' (ou 'master')
+      - main
 
 jobs:
   deploy:
@@ -21,16 +21,13 @@ jobs:
           script: |
             # On va dans le dossier
             cd ${{ secrets.PROJECT_PATH }}
-            
-            # On télécharge le nouveau code
+            git checkout main
             git fetch --all
             git reset --hard origin/main
             
-           # 1. On force l'arrêt (pour être sûr)
+            # Reconstruction forcée
             docker compose down
-            
-            # 2. On relance tout en reconstruisant
             docker compose up -d --build
             
-            # Petit nettoyage
+            # Nettoyage
             docker image prune -f
