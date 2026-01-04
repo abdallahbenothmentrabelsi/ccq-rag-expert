@@ -26,7 +26,10 @@ jobs:
             git fetch --all
             git reset --hard origin/main
             
-            # On relance les conteneurs avec le nouveau code
+           # 1. On force l'arrêt (pour être sûr)
+            docker compose down
+            
+            # 2. On relance tout en reconstruisant
             docker compose up -d --build
             
             # Petit nettoyage

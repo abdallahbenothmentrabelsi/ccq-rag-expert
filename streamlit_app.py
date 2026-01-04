@@ -209,7 +209,7 @@ with st.form("rag_query_form"):
                 display_sources = [f"📄 {s}" for s in raw_sources]
 
             if display_sources:
-                with st.expander(" Voir les sources et référenceeeees"):
+                with st.expander(" Voir les sources et références"):
                     for src in display_sources:
                         st.markdown(f"**•** {src}")
             elif raw_sources:
