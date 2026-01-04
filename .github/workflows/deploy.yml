@@ -1,0 +1,33 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main  # Vérifie que ta branche principale s'appelle bien 'main' (ou 'master')
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # On va dans le dossier
+            cd ${{ secrets.PROJECT_PATH }}
+            
+            # On télécharge le nouveau code
+            git fetch --all
+            git reset --hard origin/main
+            
+            # On relance les conteneurs avec le nouveau code
+            docker compose up -d --build
+            
+            # Petit nettoyage
+            docker image prune -f
