@@ -214,7 +214,7 @@ with st.form("rag_query_form"):
                         st.markdown(f"**•** {src}")
             elif raw_sources:
                 # Fallback si l'extraction a échoué mais qu'il y a des fichiers
-                with st.expander(" Voir les fichiers sources"):
+                with st.expander(" Voir les fichiers sourceeees"):
                     for s in raw_sources:
                         st.markdown(f"- {s}")
 
