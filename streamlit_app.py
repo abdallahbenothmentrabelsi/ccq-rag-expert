@@ -209,12 +209,12 @@ with st.form("rag_query_form"):
                 display_sources = [f"📄 {s}" for s in raw_sources]
 
             if display_sources:
-                with st.expander(" Voir les sources et références"):
+                with st.expander(" Voir les sources et référenceeeees"):
                     for src in display_sources:
                         st.markdown(f"**•** {src}")
             elif raw_sources:
                 # Fallback si l'extraction a échoué mais qu'il y a des fichiers
-                with st.expander(" Voir les fichiers sourceeees"):
+                with st.expander(" Voir les fichiers sources"):
                     for s in raw_sources:
                         st.markdown(f"- {s}")
 
