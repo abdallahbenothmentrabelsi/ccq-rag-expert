@@ -146,7 +146,7 @@ def wait_for_run_output(event_id: str, timeout_s: float = 120.0, poll_interval_s
 
         time.sleep(poll_interval_s)
 
-st.title("Upload a PDF to Ingest")
+st.title("Upload a PDF to Ingestt")
 uploaded = st.file_uploader("Choose a PDF", type=["pdf"], accept_multiple_files=False)
 
 if uploaded is not None:

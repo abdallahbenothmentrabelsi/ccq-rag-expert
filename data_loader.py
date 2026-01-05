@@ -86,3 +86,11 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
     print(f"✨ Vectorisation terminée : {len(all_embeddings)} vecteurs générés.")
     return all_embeddings
+
+def truncate_text(text: str, max_chars: int = 12000) -> str: # <--- CHANGEMENT ICI
+    """Coupe brutalement le texte pour éviter l'erreur 8192 tokens d'OpenAI."""
+    if text is None: return ""
+    if len(text) <= max_chars:
+        return text
+    print(f"🔪 COUPURE RADICALE : Chunk de {len(text)} chars coupé à {max_chars}.")
+    return text[:max_chars]
