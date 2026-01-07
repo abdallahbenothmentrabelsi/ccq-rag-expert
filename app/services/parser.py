@@ -58,9 +58,17 @@ async def parse_ccq_pdf(file_path: str):
         # On récupère les métadonnées précieuses (ex: quel est le titre parent ?)
         metadata = node.metadata.copy()
 
+        # RÉCUPÉRATION ROBUSTE DE LA PAGE
+        # LlamaParse met parfois la page dans 'page_label' (string "42") ou 'page_number' (int 42)
+        page = metadata.get("page_label") or metadata.get("page_number") or "N/A"
+
+        # INJECTION DANS LE TEXTE (C'est ça le secret !)
+        # On force le texte à commencer par "PAGE: 42"
+        enriched_content = f"PAGE: {page}\nSOURCE: {file_path}\nCONTENU:\n{content}"
+
         # Ajout explicite pour le débogage ou le filtrage futur
         chunk_data = {
-            "content": content,
+            "content": enriched_content,
             "metadata": metadata,
             "chunk_size": len(content)
         }
