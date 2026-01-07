@@ -1,22 +1,41 @@
-# Python-generated files
+# --- SECRETS & ENVIRONNEMENT (CRITIQUE) ---
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+env/
+
+# --- PYTHON ---
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
+.coverage
+htmlcov/
 
-# Virtual environments
-.venv
-venv/
-/uploads
-.env
-# PyCharm (les fichiers de config de ton éditeur)
+# --- IDE & ÉDITEURS ---
 .idea/
+.vscode/
+*.swp
 
-# Qdrant (Les données de ta base de données locale)
+# --- DONNÉES LOCALES (Ne jamais envoyer sur GitHub !) ---
+# Les PDF uploadés
+uploads/
+
+# La base de données vectorielle (Qdrant)
 qdrant_storage/
 qdrant_data/
 
-# Inngest (fichiers temporaires)
+# --- INNGEST & LOGS ---
 .inngest/
+*.log
+npm-debug.log*
+
+# --- SYSTÈME ---
+.DS_Store
+Thumbs.db
